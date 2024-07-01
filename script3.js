@@ -1,55 +1,54 @@
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-aop</artifactId>
-</dependency>
-
 package com.example.logging;
 
-import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.annotation.Around;
-import org.aspectj.lang.annotation.Aspect;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
-import org.springframework.stereotype.Component;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.config.plugins.Plugin;
+import org.apache.logging.log4j.core.layout.AbstractStringLayout;
+import org.apache.logging.log4j.core.layout.JsonTemplateLayout;
+import org.apache.logging.log4j.core.layout.JsonTemplateLayout.Builder;
+import org.apache.logging.log4j.core.util.StringBuilderWriter;
 
-@Aspect
-@Component
-public class LoggingAspect {
+import java.nio.charset.Charset;
+import java.util.HashMap;
+import java.util.Map;
 
-    private static final Logger logger = LoggerFactory.getLogger(LoggingAspect.class);
+@Plugin(name = "CustomJsonTemplateLayout", category = "Core", elementType = "layout", printObject = true)
+public class CustomJsonTemplateLayout extends JsonTemplateLayout {
 
-    @Around("execution(* com.example..*(..)) && @within(org.springframework.web.bind.annotation.RestController)")
-    public Object logProcessingTime(ProceedingJoinPoint joinPoint) throws Throwable {
-        long startTime = System.currentTimeMillis();
-        Object result = joinPoint.proceed();
-        long processingTime = System.currentTimeMillis() - startTime;
+    public CustomJsonTemplateLayout(Configuration config, Builder builder) {
+        super(config, builder);
+    }
 
-        MDC.put("processingTime", String.valueOf(processingTime));
-        logger.info("Processing time: {} ms", processingTime);
-        MDC.remove("processingTime");
+    @Override
+    public byte[] toByteArray(LogEvent event) {
+        long processingTime = System.currentTimeMillis() - event.getTimeMillis();
+        Map<String, Object> customFields = new HashMap<>();
+        customFields.put("processingTime", processingTime);
 
-        return result;
+        StringBuilderWriter writer = new StringBuilderWriter();
+        super.encode(event, writer, customFields);
+        return writer.toString().getBytes(Charset.defaultCharset());
     }
 }
 
-{
-    "log_timestamp": {
-        "$resolver": "timestamp",
-        "pattern": {
-            "format": "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
-        }
-    },
-    "message": {
-        "$resolver": "message",
-        "stringified": true
-    },
-    "threadName": {
-        "$resolver": "thread",
-        "field": "name"
-    },
-    "processingTime": {
-        "$resolver": "mdc",
-        "key": "processingTime"
-    }
-}
+
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <CustomJsonTemplateLayout>
+                <EventTemplateUri>classpath:log4j2-template.json</EventTemplateUri>
+            </CustomJsonTemplateLayout>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>
+
+
+com.example.logging.CustomJsonTemplateLayout
+
+
